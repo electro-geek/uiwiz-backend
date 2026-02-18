@@ -1,0 +1,9 @@
+venv/
+.git/
+__pycache__/
+*.pyc
+.env
+config.properties
+DEPLOY_VERCEL.md
+README.md
+LICENSE

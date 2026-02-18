@@ -129,6 +129,15 @@ def clean_code_response(text: str) -> str:
     return cleaned
 
 
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def root_view(request):
+    return Response({
+        'message': 'UIWiz API is running',
+        'health_check': '/api/health/',
+        'version': '1.0.0'
+    })
+
 class HealthCheckView(APIView):
     """Health check endpoint."""
     permission_classes = [permissions.AllowAny]
