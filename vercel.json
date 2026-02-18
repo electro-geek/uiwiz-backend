@@ -1,9 +1,8 @@
 {
     "version": 2,
     "functions": {
-        "backend/index.py": {
-            "runtime": "@vercel/python",
-            "maxDuration": 60
+        "index.py": {
+            "runtime": "@vercel/python"
         }
     },
     "rewrites": [
@@ -13,7 +12,7 @@
         },
         {
             "source": "/(.*)",
-            "destination": "/backend/index.py"
+            "destination": "/index.py"
         }
     ]
 }

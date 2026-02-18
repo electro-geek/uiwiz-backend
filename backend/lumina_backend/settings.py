@@ -21,7 +21,7 @@ DEBUG = config.get('django.debug', 'True').lower() == 'true'
 ALLOWED_HOSTS = [
     h.strip()
     for h in config.get('django.allowed_hosts', 'localhost,127.0.0.1').split(',')
-]
+] + ['uiwiz-backend.vercel.app', '.vercel.app']
 
 
 # Application definition
