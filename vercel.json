@@ -1,19 +1,14 @@
 {
-    "version": 2,
-    "functions": {
-        "index.py": {
-            "runtime": "@vercel/python",
-            "maxDuration": 60
-        }
-    },
-    "routes": [
-        {
-            "src": "/api/static/(.*)",
-            "dest": "/backend/static/$1"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "index.py"
-        }
-    ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/wsgi.py"
+    }
+  ],
+  "functions": {
+    "api/**/*.py": {
+      "excludeFiles": "tests/**,__tests__/**,**/*.test.py,**/test_*.py,*.md,.git/**,venv/**,.venv/**,__pycache__/**,*.pyc"
+    }
+  }
 }

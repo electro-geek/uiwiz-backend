@@ -2,7 +2,7 @@
 Django settings for lumina_backend project.
 Configuration is loaded from config.properties.
 """
-
+import os
 from pathlib import Path
 from .config_reader import get_config
 
@@ -21,7 +21,10 @@ DEBUG = config.get('django.debug', 'True').lower() == 'true'
 ALLOWED_HOSTS = [
     h.strip()
     for h in config.get('django.allowed_hosts', 'localhost,127.0.0.1').split(',')
-] + ['uiwiz-backend.vercel.app', '.vercel.app']
+]
+# Vercel: allow *.vercel.app (Vercel sets VERCEL=1 in production)
+if os.environ.get('VERCEL'):
+    ALLOWED_HOSTS.append('.vercel.app')
 
 
 # Application definition
@@ -83,8 +86,7 @@ WSGI_APPLICATION = 'lumina_backend.wsgi.application'
 
 
 # Database
-# For Nile / Vercel deployment, we often use environment variables.
-# The config_reader already prioritizes env vars.
+# Configuration is read from config.properties; env vars override when set.
 DATABASES = {
     'default': {
         'ENGINE': config.get('db.engine', 'django.db.backends.postgresql'),

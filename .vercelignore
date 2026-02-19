@@ -1,9 +1,31 @@
-venv/
-.git/
-__pycache__/
+# Dependencies (Vercel installs from requirements.txt)
+venv
+.venv
+env
+.env.local
 *.pyc
-.env
-config.properties
-DEPLOY_VERCEL.md
-README.md
-LICENSE
+__pycache__
+
+# Local config with secrets (use Vercel env vars instead)
+backend/config.properties
+**/config.properties
+
+# Git and IDE
+.git
+.gitignore
+.cursor
+.idea
+*.md
+!README.md
+
+# Tests and dev
+tests
+**/test_*.py
+**/*_test.py
+.pytest_cache
+.coverage
+htmlcov
+
+# Optional: uncomment if bundle size is too large
+# backend/staticfiles
+# docs
