@@ -150,3 +150,6 @@ SIMPLE_JWT = {
 # Gemini API config (from config.properties)
 GEMINI_API_KEY = config.get('gemini.api_key', '')
 GEMINI_MODEL = config.get('gemini.model', 'gemini-2.0-flash')
+
+# Firebase config
+FIREBASE_SERVICE_ACCOUNT_PATH = config.get('firebase.service_account_path', '')

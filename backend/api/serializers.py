@@ -8,7 +8,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = UserProfile
-        fields = ('gemini_api_key', 'username', 'email')
+        fields = ('gemini_api_key', 'username', 'email', 'avatar_url')
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:

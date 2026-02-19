@@ -4,6 +4,7 @@ Handles code generation via Gemini API with streaming support and automatic fail
 """
 import json
 import re
+import os
 
 from django.conf import settings
 from django.http import StreamingHttpResponse, JsonResponse
@@ -24,6 +25,77 @@ from .serializers import (
     ChatMessageSerializer, CodeVersionSerializer,
     UserProfileSerializer
 )
+import firebase_admin
+from firebase_admin import auth, credentials
+from rest_framework_simplejwt.tokens import RefreshToken
+
+# Initialize Firebase Admin
+if not firebase_admin._apps:
+    try:
+        cred_path = getattr(settings, 'FIREBASE_SERVICE_ACCOUNT_PATH', None)
+        if cred_path and os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+        else:
+            # Fallback to default credentials (works on GCP/Firebase hosting)
+            firebase_admin.initialize_app()
+    except Exception as e:
+        print(f"Firebase initialization error: {e}")
+
+class FirebaseLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        id_token = request.data.get('id_token')
+        if not id_token:
+            return Response({'error': 'ID token is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Verify the ID token
+            decoded_token = auth.verify_id_token(id_token)
+            uid = decoded_token['uid']
+            email = decoded_token.get('email')
+            name = decoded_token.get('name', '')
+            picture = decoded_token.get('picture', '')
+
+            if not email:
+                return Response({'error': 'Email not provided by Google'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get or create user
+            # Try to get by email first
+            user = User.objects.filter(email=email).first()
+            if not user:
+                # Create user if doesn't exist
+                username = email.split('@')[0]
+                # Handle username collision
+                base_username = username
+                counter = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{base_username}{counter}"
+                    counter += 1
+                
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    first_name=name
+                )
+            
+            # Ensure profile exists and update avatar
+            profile, created = UserProfile.objects.get_or_create(user=user)
+            if picture and profile.avatar_url != picture:
+                profile.avatar_url = picture
+                profile.save()
+
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user': UserSerializer(user).data
+            })
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
