@@ -2,9 +2,10 @@
 API Views for UIWiz - AI-Powered UI Generator.
 Handles code generation via Gemini API with streaming support and automatic failover.
 """
+import base64
 import json
-import re
 import os
+import re
 
 from django.conf import settings
 from django.http import StreamingHttpResponse, JsonResponse
@@ -29,15 +30,52 @@ import firebase_admin
 from firebase_admin import auth, credentials
 from rest_framework_simplejwt.tokens import RefreshToken
 
-# Initialize Firebase Admin
+def _get_firebase_credentials():
+    """
+    Resolve Firebase credentials from env (single-line JSON or base64 JSON) or from file path.
+    Returns (cred, project_id) or (None, None). Single-line minified JSON is fully supported.
+    """
+    # 1) Env var: raw JSON (single-line or multi-line) or base64-encoded JSON (for Vercel)
+    json_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if json_str:
+        json_str = json_str.strip().replace("\r", "")
+        data = None
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError:
+            try:
+                b64_clean = json_str.replace("\n", "").replace(" ", "")
+                payload = base64.b64decode(b64_clean.encode("utf-8")).decode("utf-8")
+                data = json.loads(payload)
+            except Exception:
+                raise ValueError(
+                    "FIREBASE_SERVICE_ACCOUNT_JSON must be valid JSON (single line ok) or base64-encoded JSON"
+                )
+        if data and isinstance(data, dict):
+            cred = credentials.Certificate(data)
+            project_id = data.get("project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+            return (cred, project_id)
+    # 2) File path (local dev: config.properties or FIREBASE_SERVICE_ACCOUNT_PATH)
+    cred_path = getattr(settings, "FIREBASE_SERVICE_ACCOUNT_PATH", None)
+    if cred_path and os.path.exists(cred_path):
+        with open(cred_path, "r") as f:
+            data = json.load(f)
+        cred = credentials.Certificate(data)
+        project_id = data.get("project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        return (cred, project_id)
+    return (None, None)
+
+
+# Initialize Firebase Admin (explicit project_id so auth service always has it)
 if not firebase_admin._apps:
     try:
-        cred_path = getattr(settings, 'FIREBASE_SERVICE_ACCOUNT_PATH', None)
-        if cred_path and os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred)
+        cred, project_id = _get_firebase_credentials()
+        if cred is not None:
+            options = {}
+            if project_id:
+                options["projectId"] = project_id
+            firebase_admin.initialize_app(cred, options=options if options else None)
         else:
-            # Fallback to default credentials (works on GCP/Firebase hosting)
             firebase_admin.initialize_app()
     except Exception as e:
         print(f"Firebase initialization error: {e}")

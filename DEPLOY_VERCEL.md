@@ -75,7 +75,7 @@ In the Vercel project: **Settings → Environment Variables**. Add these for **P
 | `CORS_ALLOWED_ORIGINS` | Allowed frontend origins | `https://your-frontend.vercel.app,https://your-domain.com` |
 | `GEMINI_API_KEY` | (Optional) Default Gemini API key | From Google AI Studio |
 | `GEMINI_MODEL` | (Optional) Gemini model | `gemini-2.0-flash` |
-| `FIREBASE_SERVICE_ACCOUNT_PATH` | (Optional) Path to Firebase JSON | Leave empty or use base64/env if you configure it later |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | (Optional) Firebase service account for Google login | See **Firebase credentials** below |
 
 **Neon example (split from URI):**
 
@@ -85,6 +85,16 @@ In the Vercel project: **Settings → Environment Variables**. Add these for **P
 - `DB_PASSWORD` = password from URI
 - `DB_PORT` = `5432`
 - `DB_SSLMODE` = `require`
+
+**Firebase credentials (Google login):**  
+Since the service account JSON file is not in the repo, set it via env var.
+
+- **Option A – Minified JSON:** Copy the entire contents of `firebase-service-account.json`, minify it (one line, no extra spaces), and paste as the value of `FIREBASE_SERVICE_ACCOUNT_JSON` in Vercel. Avoid line breaks inside the value.
+- **Option B – Base64 (recommended):** Encode the file once and paste the result:
+  ```bash
+  base64 -w0 path/to/firebase-service-account.json
+  ```
+  Set `FIREBASE_SERVICE_ACCOUNT_JSON` to that base64 string. The app accepts either raw JSON or base64-encoded JSON.
 
 ---
 
