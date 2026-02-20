@@ -27,6 +27,7 @@ from .serializers import (
     ChatMessageSerializer, CodeVersionSerializer,
     UserProfileSerializer
 )
+from .utils import decrypt_data
 import firebase_admin
 from firebase_admin import auth, credentials
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -347,7 +348,8 @@ class GenerateCodeView(APIView):
         # Get API key from user profile
         try:
             profile = request.user.profile
-            api_key = profile.gemini_api_key
+            # Decrypt the API key before using it
+            api_key = decrypt_data(profile.gemini_api_key)
         except ObjectDoesNotExist:
             api_key = None
 

@@ -155,3 +155,6 @@ GEMINI_MODEL = config.get('gemini.model', 'gemini-2.0-flash')
 
 # Firebase config
 FIREBASE_SERVICE_ACCOUNT_PATH = config.get('firebase.service_account_path', '')
+
+# Encryption
+ENCRYPTION_KEY = config.get('encryption.key', '')
