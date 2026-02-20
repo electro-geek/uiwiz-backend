@@ -8,6 +8,7 @@ import os
 import re
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import StreamingHttpResponse, JsonResponse
 from django.contrib.auth.models import User
 from rest_framework import status, permissions, generics
@@ -347,7 +348,7 @@ class GenerateCodeView(APIView):
         try:
             profile = request.user.profile
             api_key = profile.gemini_api_key
-        except UserProfile.DoesNotExist:
+        except ObjectDoesNotExist:
             api_key = None
 
         if not api_key:
