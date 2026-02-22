@@ -5,10 +5,14 @@ from .models import ChatSession, ChatMessage, CodeVersion, UserProfile
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.ReadOnlyField(source='user.username')
     email = serializers.ReadOnlyField(source='user.email')
+    has_api_key = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
-        fields = ('username', 'email', 'avatar_url')
+        fields = ('username', 'email', 'avatar_url', 'has_api_key')
+
+    def get_has_api_key(self, obj):
+        return bool(obj.gemini_api_key_encrypted and obj.gemini_api_key_encrypted.strip())
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:

@@ -23,19 +23,28 @@ from google.api_core.exceptions import (
 )
 from .models import ChatSession, ChatMessage, CodeVersion, UserProfile
 from .serializers import (
-    UserSerializer, ChatSessionSerializer, 
+    UserSerializer, ChatSessionSerializer,
     ChatMessageSerializer, CodeVersionSerializer,
     UserProfileSerializer
 )
-import firebase_admin
-from firebase_admin import auth, credentials
+from .utils import encrypt_data, decrypt_data
 from rest_framework_simplejwt.tokens import RefreshToken
+
+try:
+    import firebase_admin
+    from firebase_admin import auth, credentials
+except ImportError:
+    firebase_admin = None
+    auth = None
+    credentials = None
 
 def _get_firebase_credentials():
     """
     Resolve Firebase credentials from env (single-line JSON or base64 JSON) or from file path.
     Returns (cred, project_id) or (None, None). Single-line minified JSON is fully supported.
     """
+    if credentials is None:
+        return (None, None)
     # 1) Env var: raw JSON (single-line or multi-line) or base64-encoded JSON (for Vercel)
     json_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
     if json_str:
@@ -67,24 +76,35 @@ def _get_firebase_credentials():
     return (None, None)
 
 
-# Initialize Firebase Admin (explicit project_id so auth service always has it)
-if not firebase_admin._apps:
-    try:
-        cred, project_id = _get_firebase_credentials()
-        if cred is not None:
-            options = {}
-            if project_id:
-                options["projectId"] = project_id
-            firebase_admin.initialize_app(cred, options=options if options else None)
-        else:
-            firebase_admin.initialize_app()
-    except Exception as e:
-        print(f"Firebase initialization error: {e}")
+def _ensure_firebase_initialized():
+    """Initialize Firebase Admin if credentials available (lazy init so migrate works without firebase_admin)."""
+    if firebase_admin is None:
+        return
+    if not firebase_admin._apps:
+        try:
+            cred, project_id = _get_firebase_credentials()
+            if cred is not None:
+                options = {}
+                if project_id:
+                    options["projectId"] = project_id
+                firebase_admin.initialize_app(cred, options=options if options else None)
+            else:
+                firebase_admin.initialize_app()
+        except Exception as e:
+            print(f"Firebase initialization error: {e}")
+
 
 class FirebaseLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        if auth is None:
+            return Response(
+                {'error': 'Google sign-in is not configured. Firebase Admin SDK is not available.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        _ensure_firebase_initialized()
+
         id_token = request.data.get('id_token')
         if not id_token:
             return Response({'error': 'ID token is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -164,6 +184,24 @@ class UserProfileView(APIView):
 
     def post(self, request):
         profile, created = UserProfile.objects.get_or_create(user=request.user)
+
+        # Handle API key update/delete (never expose raw key in response)
+        if request.data.get('delete_api_key') is True:
+            profile.gemini_api_key_encrypted = None
+            profile.save()
+            serializer = UserProfileSerializer(profile)
+            return Response(serializer.data)
+
+        gemini_api_key = request.data.get('gemini_api_key')
+        if gemini_api_key is not None:
+            key = (gemini_api_key.strip() if isinstance(gemini_api_key, str) else '') or None
+            if key:
+                profile.gemini_api_key_encrypted = encrypt_data(key)
+            else:
+                profile.gemini_api_key_encrypted = None
+            profile.save()
+
+        # Allow other profile fields (e.g. avatar_url) via partial update
         serializer = UserProfileSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -245,12 +283,14 @@ def root_view(request):
     })
 
 class HealthCheckView(APIView):
-    """Health check endpoint."""
+    """Health check endpoint. When authenticated, gemini_configured reflects user's API key."""
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        api_key = getattr(settings, 'GEMINI_API_KEY', None)
-        gemini_configured = bool(api_key and api_key.strip())
+        gemini_configured = False
+        if request.user.is_authenticated:
+            profile, _ = UserProfile.objects.get_or_create(user=request.user)
+            gemini_configured = bool(profile.gemini_api_key_encrypted and profile.gemini_api_key_encrypted.strip())
 
         return Response({
             'status': 'healthy',
@@ -332,21 +372,24 @@ class GenerateCodeView(APIView):
         # Save user message
         ChatMessage.objects.create(session=session, role='user', content=prompt)
 
-        # Use API key from server config only
-        api_key = getattr(settings, 'GEMINI_API_KEY', None)
-        if not api_key or not api_key.strip():
+        # Use API key from user's profile (stored encrypted)
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        raw_key = None
+        if profile.gemini_api_key_encrypted:
+            raw_key = decrypt_data(profile.gemini_api_key_encrypted)
+        api_key = (raw_key and raw_key.strip()) or None
+        if not api_key:
             return Response(
-                {'error': 'Gemini API key is not configured on the server. Please contact support.'},
+                {'error': 'Please add your Gemini API key in Settings to generate code. UIWiz cannot work without it.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        api_key = api_key.strip()
 
         # update session title if it's new
         if session.title == 'New Chat':
             session.title = generate_chat_title(api_key, prompt)
             session.save()
 
-        # Configure Gemini
+        # Configure Gemini with user's key
         genai.configure(api_key=api_key)
 
         # Prepare parts
@@ -407,7 +450,7 @@ class GenerateCodeView(APIView):
                 continue
             except (InvalidArgument, PermissionDenied, Unauthenticated) as e:
                 return Response(
-                    {'error': 'Gemini API key is invalid or has expired. Please contact the administrator.'},
+                    {'error': 'Gemini API key is invalid or has expired. Please update your API key in Settings.'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             except Exception as e:
@@ -463,7 +506,7 @@ class GenerateCodeView(APIView):
                     print(f"Auth error for {model_name}: {e}")
                     error_data = json.dumps({
                         'type': 'error',
-                        'content': 'Gemini API key is invalid or has expired. Please contact the administrator.'
+                        'content': 'Gemini API key is invalid or has expired. Please update your API key in Settings.'
                     })
                     yield f"data: {error_data}\n\n"
                     return
