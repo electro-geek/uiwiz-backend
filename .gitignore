@@ -4,8 +4,10 @@ __pycache__/
 *$py.class
 
 config.properties
+backend/config.properties
 
 firebase-service-account.json
+backend/firebase-service-account.json
 
 # C extensions
 *.so

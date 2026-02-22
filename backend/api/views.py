@@ -27,7 +27,6 @@ from .serializers import (
     ChatMessageSerializer, CodeVersionSerializer,
     UserProfileSerializer
 )
-from .utils import decrypt_data
 import firebase_admin
 from firebase_admin import auth, credentials
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -171,11 +170,6 @@ class UserProfileView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request):
-        profile, created = UserProfile.objects.get_or_create(user=request.user)
-        profile.gemini_api_key = None
-        profile.save()
-        return Response({'status': 'API key deleted'})
 
 
 # Fallback models to try if the primary model hits a rate limit
@@ -255,15 +249,8 @@ class HealthCheckView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        gemini_configured = False
-        if request.user.is_authenticated:
-            try:
-                gemini_configured = bool(request.user.profile.gemini_api_key)
-            except UserProfile.DoesNotExist:
-                gemini_configured = False
-        else:
-            # For anonymous health check, just return backend status
-            gemini_configured = False
+        api_key = getattr(settings, 'GEMINI_API_KEY', None)
+        gemini_configured = bool(api_key and api_key.strip())
 
         return Response({
             'status': 'healthy',
@@ -344,26 +331,14 @@ class GenerateCodeView(APIView):
 
         # Save user message
         ChatMessage.objects.create(session=session, role='user', content=prompt)
-        
-        # Get API key from user profile
-        try:
-            profile = request.user.profile
-            # Decrypt the API key before using it
-            api_key = decrypt_data(profile.gemini_api_key)
-        except ObjectDoesNotExist:
-            api_key = None
 
-        if not api_key:
-            # Fallback to global server key if user key is not provided
-            api_key = getattr(settings, 'GEMINI_API_KEY', None)
-
-        if not api_key:
+        # Use API key from server config only
+        api_key = getattr(settings, 'GEMINI_API_KEY', None)
+        if not api_key or not api_key.strip():
             return Response(
-                {'error': 'Gemini API key not found. Please provide your own API key in settings or contact support.'},
+                {'error': 'Gemini API key is not configured on the server. Please contact support.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Clean the key
         api_key = api_key.strip()
 
         # update session title if it's new
@@ -432,7 +407,7 @@ class GenerateCodeView(APIView):
                 continue
             except (InvalidArgument, PermissionDenied, Unauthenticated) as e:
                 return Response(
-                    {'error': 'Your Gemini API key is invalid or has expired. Please create a new one in settings.'},
+                    {'error': 'Gemini API key is invalid or has expired. Please contact the administrator.'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             except Exception as e:
@@ -487,8 +462,8 @@ class GenerateCodeView(APIView):
                 except (InvalidArgument, PermissionDenied, Unauthenticated) as e:
                     print(f"Auth error for {model_name}: {e}")
                     error_data = json.dumps({
-                        'type': 'error', 
-                        'content': 'Your Gemini API key is invalid or has expired. Please create a new one in settings.'
+                        'type': 'error',
+                        'content': 'Gemini API key is invalid or has expired. Please contact the administrator.'
                     })
                     yield f"data: {error_data}\n\n"
                     return

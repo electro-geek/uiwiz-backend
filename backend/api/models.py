@@ -3,7 +3,6 @@ from django.contrib.auth.models import User
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    gemini_api_key = models.CharField(max_length=255, blank=True, null=True)
     avatar_url = models.URLField(max_length=1000, blank=True, null=True)
 
     def __str__(self):
