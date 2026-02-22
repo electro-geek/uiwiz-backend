@@ -354,10 +354,17 @@ class GenerateCodeView(APIView):
             api_key = None
 
         if not api_key:
+            # Fallback to global server key if user key is not provided
+            api_key = getattr(settings, 'GEMINI_API_KEY', None)
+
+        if not api_key:
             return Response(
-                {'error': 'Gemini API key not found. Please provide your own API key in settings.'},
+                {'error': 'Gemini API key not found. Please provide your own API key in settings or contact support.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Clean the key
+        api_key = api_key.strip()
 
         # update session title if it's new
         if session.title == 'New Chat':
